@@ -1,0 +1,1661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DEAD MILE — Episode 1</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #000;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Courier New", monospace;
+      color: #e2e8f0;
+    }
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+      position: absolute;
+      left: 0;
+      top: 0;
+      opacity: 0;
+      transition: opacity 1.2s ease;
+    }
+    #canvas-container.active {
+      opacity: 1;
+    }
+
+    .letterbox {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 7.5vh;
+      background: #000;
+      z-index: 25;
+      pointer-events: none;
+      transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    #letterbox-top { top: 0; }
+    #letterbox-bottom { bottom: 0; }
+    .letterbox-hidden#letterbox-top {
+      transform: translateY(-100%);
+    }
+    .letterbox-hidden#letterbox-bottom {
+      transform: translateY(100%);
+    }
+
+    #blackout-overlay {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 90;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.05s ease;
+    }
+    #blackout-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* =========================================================
+       1. ASSET PRELOADER
+       ========================================================= */
+    #loader-screen {
+      position: fixed;
+      inset: 0;
+      background: #000000;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      transition: opacity 0.8s ease, visibility 0.8s;
+    }
+    #loader-screen.fade-out {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .spinner-ring {
+      width: 44px;
+      height: 44px;
+      border: 3px solid rgba(59, 130, 246, 0.15);
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 18px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .load-text {
+      font-size: 0.72rem;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: #94a3b8;
+    }
+
+    #menu-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      background: #000000;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 9vh 8vw;
+      transition: opacity 0.5s ease;
+      will-change: opacity;
+    }
+    #menu-screen.hidden {
+      display: none;
+    }
+
+    .menu-header {
+      text-align: left;
+    }
+    .menu-title {
+      font-size: clamp(2.8rem, 7vw, 5.2rem);
+      line-height: 1.05;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0;
+    }
+    .dead-text {
+      font-weight: 900;
+      color: #ef4444;
+      letter-spacing: 0.12em;
+      display: inline-block;
+    }
+    .mile-text {
+      font-weight: 200;
+      color: #f1f5f9;
+      letter-spacing: 0.26em;
+      display: inline-block;
+      position: relative;
+    }
+    .mile-text::after {
+      content: "";
+      position: absolute;
+      left: 0.28em;
+      right: 0;
+      bottom: -6px;
+      height: 2px;
+      background: linear-gradient(90deg, #f1f5f9, rgba(241, 245, 249, 0.1), transparent);
+    }
+
+    .menu-footer {
+      text-align: left;
+    }
+    .play-btn {
+      background: transparent;
+      border: 1px solid rgba(241, 245, 249, 0.25);
+      color: #cbd5e1;
+      font-family: inherit;
+      font-size: 0.8rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      padding: 12px 24px;
+      border-radius: 2px;
+      cursor: pointer;
+      transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+      outline: none;
+    }
+    .play-btn:hover {
+      border-color: #3b82f6;
+      color: #ffffff;
+      background: rgba(59, 130, 246, 0.08);
+    }
+
+    #title-card {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      z-index: 30;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 1.8s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    #title-card.show { opacity: 1; }
+    #title-card.hide { opacity: 0; }
+    #title-card h2 {
+      font-size: 0.85rem;
+      letter-spacing: 0.45em;
+      text-transform: uppercase;
+      color: #3b82f6;
+      margin-bottom: 10px;
+      font-weight: 400;
+    }
+    #title-card h1 {
+      font-size: 2.1rem;
+      letter-spacing: 0.36em;
+      text-transform: uppercase;
+      color: #f8fafc;
+      font-weight: 300;
+      text-shadow: 0 0 25px rgba(255, 255, 255, 0.35);
+    }
+
+    /* =========================================================
+       4. TELLTALE CHOICE OVERLAY
+       ========================================================= */
+    #telltale-overlay {
+      position: absolute;
+      bottom: 8.5vh;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90%;
+      max-width: 820px;
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.5s ease;
+    }
+    #telltale-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    #timer-wrapper {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 2px;
+      margin-bottom: 14px;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+    }
+    #choice-timer-bar {
+      width: 100%;
+      height: 100%;
+      background: #ef4444;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.85);
+      transform-origin: center center;
+      transform: scaleX(1);
+    }
+
+    .choices-grid {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .telltale-btn {
+      background: rgba(8, 13, 23, 0.94);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      color: #f8fafc;
+      padding: 16px 20px;
+      font-family: inherit;
+      font-size: 0.92rem;
+      letter-spacing: 0.04em;
+      text-align: left;
+      cursor: pointer;
+      border-radius: 4px;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.7);
+      transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+      outline: none;
+    }
+    .telltale-btn:hover {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: #3b82f6;
+      box-shadow: 0 0 18px rgba(59, 130, 246, 0.35);
+      transform: translateY(-2px);
+    }
+    .telltale-btn.silence-opt {
+      color: #94a3b8;
+      font-style: italic;
+    }
+
+    .incoming-banner {
+      font-size: 0.72rem;
+      letter-spacing: 0.32em;
+      text-transform: uppercase;
+      color: #22c55e;
+      background: rgba(4, 25, 15, 0.92);
+      border: 1px solid rgba(34, 197, 94, 0.5);
+      padding: 6px 18px;
+      border-radius: 20px;
+      margin-top: 14px;
+      box-shadow: 0 0 14px rgba(34, 197, 94, 0.35);
+      animation: pulseAlert 0.75s infinite alternate;
+    }
+    @keyframes pulseAlert {
+      from { opacity: 0.5; }
+      to { opacity: 1; }
+    }
+
+    /* =========================================================
+       5. CLEAN FLOATING SUBTITLES
+       ========================================================= */
+    #subtitle-container {
+      position: absolute;
+      bottom: 12vh;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90%;
+      max-width: 860px;
+      text-align: center;
+      z-index: 55;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+    #subtitle-container.visible {
+      opacity: 1;
+    }
+    #subtitle-text {
+      font-size: 1.28rem;
+      line-height: 1.55;
+      color: #ffffff;
+      font-weight: 400;
+      letter-spacing: 0.02em;
+      text-shadow: 0 2px 5px rgba(0,0,0,0.95), 0 0 18px rgba(0,0,0,0.9), 0 0 35px rgba(0,0,0,0.9);
+    }
+    .cursor-blink {
+      display: inline-block;
+      width: 8px;
+      height: 1.15em;
+      background: #3b82f6;
+      margin-left: 5px;
+      vertical-align: middle;
+      box-shadow: 0 0 8px #3b82f6;
+      animation: blink 0.75s infinite;
+    }
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+
+    #hotspot-container, #weapon-choice-container {
+      position: absolute;
+      inset: 0;
+      z-index: 60;
+      pointer-events: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 8vw;
+      opacity: 0;
+      transition: opacity 0.6s ease;
+    }
+    #blackout-overlay {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 90;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.5s ease;
+    }
+    #end-card {
+      position: fixed;
+      inset: 0;
+      z-index: 95;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: transparent;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.2s ease;
+    }
+    #end-card.visible {
+      opacity: 1;
+    }
+    #end-card h1 {
+      font-size: 2rem;
+      letter-spacing: 0.4em;
+      text-transform: uppercase;
+      color: #f8fafc;
+      font-weight: 300;
+      text-shadow: 0 0 25px rgba(255, 255, 255, 0.4);
+    }
+    #weapon-choice-container {
+      bottom: 8.5vh;
+      top: auto;
+      justify-content: center;
+      gap: 32px;
+      padding: 0;
+    }
+    #hotspot-container.visible, #weapon-choice-container.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .hotspot-btn {
+      background: rgba(8, 13, 23, 0.88);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #f1f5f9;
+      font-family: inherit;
+      font-size: 0.88rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      padding: 14px 24px;
+      border-radius: 3px;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+      transition: all 0.25s ease;
+      outline: none;
+    }
+    .hotspot-btn:hover {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: #3b82f6;
+      box-shadow: 0 0 16px rgba(59, 130, 246, 0.4);
+      transform: scale(1.04);
+      color: #ffffff;
+    }
+  </style>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <!-- AUDIO ASSETS -->
+  <audio id="snd-rain-outside" src="Rain.mp3" loop preload="auto"></audio>
+  <audio id="snd-rain-inside" src="CarRain.mp3" loop preload="auto"></audio>
+  <audio id="snd-drive-outside" src="CarDrivingOutside.mp3" loop preload="auto"></audio>
+  <audio id="snd-drive-inside" src="CarDrivingInside.mp3" loop preload="auto"></audio>
+  <audio id="snd-radio-beep" src="RadioBeep.mp3" preload="auto"></audio>
+  <audio id="snd-choice1" src="E1C1S2C1.wav" preload="auto"></audio>
+  <audio id="snd-choice2" src="E1C1S2C2.wav" preload="auto"></audio>
+  <audio id="snd-choice3" src="E1C1S2C3.wav" preload="auto"></audio>
+  <audio id="snd-choice4" src="E1C1S2C4.wav" preload="auto"></audio>
+  <audio id="snd-voicemail-beep" src="VoicemailBeep.mp3" preload="auto"></audio>
+  <audio id="snd-engine-off" src="CarEngineOff.mp3" preload="auto"></audio>
+  <audio id="snd-scene3-dialogue" src="E1C1S3D1.wav" preload="auto"></audio>
+  <audio id="snd-glovebox-click" src="GloveboxOpen.mp3" preload="auto"></audio>
+  <audio id="snd-glovebox-close" src="GloveboxClose.mp3" preload="auto"></audio>
+  <audio id="snd-glovebox-dialogue" src="E1C1S3D2.wav" preload="auto"></audio>
+  <audio id="snd-revolver-choice" src="E1C1S3R.wav" preload="auto"></audio>
+  <audio id="snd-crowbar-choice" src="E1C1S3C.wav" preload="auto"></audio>
+  <audio id="snd-exit-dialogue" src="E1C1S3D3.wav" preload="auto"></audio>
+  <audio id="snd-footsteps" src="WetGravelFootsteps.mp3" preload="auto"></audio>
+  <div id="blackout-overlay"></div>
+  <div id="end-card"><h1>CHAPTER 1 COMPLETE</h1></div>
+
+  <div id="letterbox-top" class="letterbox"></div>
+  <div id="letterbox-bottom" class="letterbox"></div>
+  <div id="canvas-container"></div>
+
+  <!-- Preload Screen -->
+  <div id="loader-screen">
+    <div class="spinner-ring"></div>
+    <div class="load-text">PREPARING 1987 BUICK GNX</div>
+  </div>
+
+  <div id="menu-screen">
+    <div class="menu-header">
+      <h1 class="menu-title">
+        <span class="dead-text">DEAD</span> <span class="mile-text">MILE</span>
+      </h1>
+    </div>
+
+    <div class="menu-footer">
+      <button class="play-btn" id="play-btn">START</button>
+    </div>
+  </div>
+
+  <!-- Chapter Title Card -->
+  <div id="title-card">
+    <h2>DEAD MILE</h2>
+    <h1>CHAPTER 1: MIDNIGHT STATIC</h1>
+  </div>
+
+  <!-- Choice Overlay -->
+  <div id="telltale-overlay">
+    <div id="timer-wrapper"><div id="choice-timer-bar"></div></div>
+    <div class="choices-grid">
+      <button class="telltale-btn" onclick="makeChoice(1)">Answer immediately.</button>
+      <button class="telltale-btn" onclick="makeChoice(2)">Divert to Deputy Miller.</button>
+      <button class="telltale-btn" onclick="makeChoice(3)">Answer with hostility.</button>
+      <button class="telltale-btn silence-opt" onclick="makeChoice(4)">(Silence) Let it ring.</button>
+    </div>
+    <div class="incoming-banner">&bull; INCOMING CB RADIO TRANSMISSION &bull;</div>
+  </div>
+
+  <!-- Subtitle Container -->
+  <div id="subtitle-container">
+    <div id="subtitle-text"><span id="text-content"></span><span class="cursor-blink"></span></div>
+  </div>
+  <!-- Scene 3 Interactive Hotspots -->
+  <div id="hotspot-container">
+    <button class="hotspot-btn" id="btn-exit-car" onclick="onExitCarClick()">Exit Car</button>
+    <button class="hotspot-btn" id="btn-inspect-glovebox" onclick="onInspectGloveboxClick()">Inspect Glovebox</button>
+  </div>
+
+  <div id="weapon-choice-container">
+    <button class="hotspot-btn" id="btn-take-revolver" onclick="chooseWeapon('revolver')">Take Revolver</button>
+    <button class="hotspot-btn" id="btn-take-crowbar" onclick="chooseWeapon('crowbar')">Take Crowbar</button>
+  </div>
+
+  <script>
+    /* -------------------------------------------------------------
+       1. GAME STATE
+       ------------------------------------------------------------- */
+    const gameState = {
+      elenaTrust: 0,
+      millerNotified: false,
+      choiceMade: false,
+      selectedWeapon: null
+    };
+
+    /* -------------------------------------------------------------
+       2. AUDIO DIRECTOR (CLEAN DIRECT PLAYBACK - ZERO BLIPS)
+       ------------------------------------------------------------- */
+    const audioDirector = {
+      rainOutside: document.getElementById('snd-rain-outside'),
+      rainInside: document.getElementById('snd-rain-inside'),
+      driveOutside: document.getElementById('snd-drive-outside'),
+      driveInside: document.getElementById('snd-drive-inside'),
+      radioBeep: document.getElementById('snd-radio-beep'),
+      choice1Audio: document.getElementById('snd-choice1'),
+      choice2Audio: document.getElementById('snd-choice2'),
+      choice3Audio: document.getElementById('snd-choice3'),
+      choice4Audio: document.getElementById('snd-choice4'),
+      voicemailBeep: document.getElementById('snd-voicemail-beep'),
+      engineOff: document.getElementById('snd-engine-off'),
+      scene3Dialogue: document.getElementById('snd-scene3-dialogue'),
+      gloveboxClick: document.getElementById('snd-glovebox-click'),
+      gloveboxClose: document.getElementById('snd-glovebox-close'),
+      gloveboxDialogue: document.getElementById('snd-glovebox-dialogue'),
+      revolverChoice: document.getElementById('snd-revolver-choice'),
+      crowbarChoice: document.getElementById('snd-crowbar-choice'),
+      exitDialogue: document.getElementById('snd-exit-dialogue'),
+      footsteps: document.getElementById('snd-footsteps'),
+      currentMode: null,
+
+      radioBeepTimer: null,
+      isRadioBeeping: false,
+
+      startExterior() {
+        if (this.currentMode === 'outside') return;
+        this.currentMode = 'outside';
+
+        this.rainInside.pause();
+        this.driveInside.pause();
+
+        this.rainOutside.currentTime = 0;
+        this.driveOutside.currentTime = 0;
+        this.rainOutside.volume = 0.85;
+        this.driveOutside.volume = 0.9;
+
+        this.rainOutside.play().catch(e => console.warn("rainOutside play:", e));
+        this.driveOutside.play().catch(e => console.warn("driveOutside play:", e));
+      },
+
+      switchToInterior() {
+        if (this.currentMode === 'inside') return;
+        this.currentMode = 'inside';
+
+        this.rainOutside.pause();
+        this.driveOutside.pause();
+
+        this.rainInside.currentTime = 0;
+        this.rainInside.volume = 1.0;
+        this.rainInside.play().catch(e => console.warn("rainInside play:", e));
+
+        this.driveInside.currentTime = 0;
+        this.driveInside.volume = 0.85;
+        this.driveInside.play().catch(e => console.warn("driveInside play:", e));
+      },
+
+      stopAllDrivingAudio() {
+        this.driveInside.pause();
+        this.driveOutside.pause();
+        this.rainOutside.pause();
+
+        this.rainInside.volume = 0.9;
+        if (this.rainInside.paused) {
+          this.rainInside.play().catch(() => {});
+        }
+
+        this.engineOff.currentTime = 0;
+        this.engineOff.play().catch(() => {});
+      },
+
+      startRadioPingLoop() {
+        if (this.isRadioBeeping) return;
+        this.isRadioBeeping = true;
+
+        const playBeep = () => {
+          if (!this.isRadioBeeping) return;
+          this.radioBeep.currentTime = 0;
+          this.radioBeep.volume = 0.85;
+          this.radioBeep.play().catch(() => {});
+        };
+
+        playBeep();
+
+        this.radioBeep.onended = () => {
+          if (!this.isRadioBeeping) return;
+          this.radioBeepTimer = setTimeout(playBeep, 1350);
+        };
+      },
+
+      stopRadioPingLoop() {
+        this.isRadioBeeping = false;
+        if (this.radioBeepTimer) {
+          clearTimeout(this.radioBeepTimer);
+          this.radioBeepTimer = null;
+        }
+        this.radioBeep.onended = null;
+        this.radioBeep.pause();
+        this.radioBeep.currentTime = 0;
+      }
+    };
+
+    /* -------------------------------------------------------------
+       3. 3D SCENE SETUP
+       ------------------------------------------------------------- */
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x010205);
+    scene.fog = new THREE.FogExp2(0x020409, 0.0088);
+
+    const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.05, 1200);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.autoUpdate = false;
+    container.appendChild(renderer.domElement);
+
+    const carRoot = new THREE.Group();
+    scene.add(carRoot);
+
+    /* -------------------------------------------------------------
+       4. STARS & MOON
+       ------------------------------------------------------------- */
+    const starCount = 1500;
+    const starGeo = new THREE.BufferGeometry();
+    const starPos = new Float32Array(starCount * 3);
+
+    for (let i = 0; i < starCount; i++) {
+      const angle = (Math.random() - 0.5) * Math.PI * 1.8;
+      const height = Math.random() * 260 + 10;
+      const dist = 320 + Math.random() * 280;
+
+      starPos[i * 3 + 0] = Math.sin(angle) * dist;
+      starPos[i * 3 + 1] = height;
+      starPos[i * 3 + 2] = Math.cos(angle) * dist;
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+
+    const starMat = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 2.0,
+      transparent: true,
+      opacity: 0.95,
+      fog: false
+    });
+    scene.add(new THREE.Points(starGeo, starMat));
+
+    // Moon
+    const moonGroup = new THREE.Group();
+    moonGroup.position.set(130, 200, 340);
+    moonGroup.add(new THREE.Mesh(new THREE.SphereGeometry(18, 24, 24), new THREE.MeshBasicMaterial({ color: 0xffffff })));
+
+    const moonHaloMat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide,
+      uniforms: { uColor: { value: new THREE.Color(0xa5c4f7) } },
+      vertexShader: `varying vec3 vNormal; void main() { vNormal = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform vec3 uColor; varying vec3 vNormal; void main() { float intensity = pow(0.7 - dot(vNormal, vec3(0, 0, 1.0)), 2.8); gl_FragColor = vec4(uColor, intensity * 0.7); }`
+    });
+    moonGroup.add(new THREE.Mesh(new THREE.SphereGeometry(26, 24, 24), moonHaloMat));
+    scene.add(moonGroup);
+
+    const moonLight = new THREE.DirectionalLight(0xb0cdfa, 1.3);
+    moonLight.position.copy(moonGroup.position);
+    moonLight.target = carRoot;
+    scene.add(moonLight);
+
+    // Deep ambient night light
+    const ambientLight = new THREE.AmbientLight(0x060c18, 0.20);
+    scene.add(ambientLight);
+
+    /* -------------------------------------------------------------
+       5. EXTERNAL VEHICLE LIGHTING
+       ------------------------------------------------------------- */
+    const vehicleHeadlights = [];
+    function createHeadlight(xOffset) {
+      const spot = new THREE.SpotLight(0xfffaed, 24.0, 140, Math.PI / 7.5, 0.45, 1.2);
+      spot.position.set(xOffset, 0.75, 2.3);
+      const target = new THREE.Object3D();
+      target.position.set(xOffset * 0.3, 0.2, 50);
+      carRoot.add(spot);
+      carRoot.add(target);
+      spot.target = target;
+      spot.castShadow = true;
+      vehicleHeadlights.push(spot);
+      return spot;
+    }
+    createHeadlight(-0.78);
+    createHeadlight(0.78);
+
+    const tailLightL = new THREE.PointLight(0x3b82f6, 3.5, 7, 2.0);
+    tailLightL.position.set(-0.75, 0.75, -2.45);
+    carRoot.add(tailLightL);
+
+    const tailLightR = new THREE.PointLight(0x3b82f6, 3.5, 7, 2.0);
+    tailLightR.position.set(0.75, 0.75, -2.45);
+    carRoot.add(tailLightR);
+
+    /* -------------------------------------------------------------
+       6. WIDE HIGHWAY & GROUND
+       ------------------------------------------------------------- */
+    function createFastRoadTexture() {
+      const cv = document.createElement('canvas');
+      cv.width = 512;
+      cv.height = 1024;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#0e141f';
+      ctx.fillRect(0, 0, cv.width, cv.height);
+
+      ctx.fillStyle = '#dbeafe';
+      ctx.fillRect(35, 0, 10, cv.height);
+      ctx.fillRect(cv.width - 45, 0, 10, cv.height);
+
+      ctx.fillStyle = '#facc15';
+      const dashH = 80, gapH = 60;
+      for (let y = 0; y < cv.height; y += dashH + gapH) {
+        ctx.fillRect(cv.width / 2 - 4, y, 8, dashH);
+      }
+
+      const tex = new THREE.CanvasTexture(cv);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(1, 14);
+      return tex;
+    }
+
+    const roadLength = 260;
+    const roadMat = new THREE.MeshStandardMaterial({
+      map: createFastRoadTexture(),
+      roughness: 0.25,
+      metalness: 0.4,
+      fog: true
+    });
+
+    const roadPlanes = [
+      new THREE.Mesh(new THREE.PlaneGeometry(20, roadLength), roadMat),
+      new THREE.Mesh(new THREE.PlaneGeometry(20, roadLength), roadMat)
+    ];
+    roadPlanes.forEach((rp, idx) => {
+      rp.rotation.x = -Math.PI / 2;
+      rp.position.set(0, 0, idx * roadLength);
+      rp.receiveShadow = true;
+      scene.add(rp);
+    });
+
+    const terrainMat = new THREE.MeshStandardMaterial({
+      color: 0x03060b,
+      roughness: 0.95,
+      metalness: 0.05,
+      fog: true
+    });
+    const terrainPlanes = [
+      new THREE.Mesh(new THREE.PlaneGeometry(320, roadLength), terrainMat),
+      new THREE.Mesh(new THREE.PlaneGeometry(320, roadLength), terrainMat)
+    ];
+    terrainPlanes.forEach((tp, idx) => {
+      tp.rotation.x = -Math.PI / 2;
+      tp.position.set(0, -0.05, idx * roadLength);
+      scene.add(tp);
+    });
+    const relayStation = new THREE.Group();
+
+    const concreteMat = new THREE.MeshStandardMaterial({
+      color: 0x252a34,
+      roughness: 0.9,
+      metalness: 0.1,
+      fog: true
+    });
+    const rustMetalMat = new THREE.MeshStandardMaterial({
+      color: 0x181e28,
+      roughness: 0.7,
+      metalness: 0.8,
+      fog: true
+    });
+    const yellowHazardMat = new THREE.MeshStandardMaterial({
+      color: 0xc28e0e,
+      roughness: 0.5,
+      fog: true
+    });
+
+    const bldgLeft = new THREE.Mesh(new THREE.BoxGeometry(16, 7, 10.7), concreteMat);
+    bldgLeft.position.set(0, 3.5, 6.65);
+    bldgLeft.castShadow = true;
+    bldgLeft.receiveShadow = true;
+    relayStation.add(bldgLeft);
+
+    const bldgRight = new THREE.Mesh(new THREE.BoxGeometry(16, 7, 10.7), concreteMat);
+    bldgRight.position.set(0, 3.5, -6.65);
+    bldgRight.castShadow = true;
+    bldgRight.receiveShadow = true;
+    relayStation.add(bldgRight);
+
+    const bldgHeader = new THREE.Mesh(new THREE.BoxGeometry(16, 2.8, 2.6), concreteMat);
+    bldgHeader.position.set(0, 5.6, 0);
+    bldgHeader.castShadow = true;
+    relayStation.add(bldgHeader);
+
+    const interiorDarkness = new THREE.Mesh(new THREE.BoxGeometry(15.2, 6.6, 23.2), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+    interiorDarkness.position.set(0, 3.5, 0);
+    relayStation.add(interiorDarkness);
+
+    const roofMesh = new THREE.Mesh(new THREE.BoxGeometry(17.2, 0.8, 25.2), concreteMat);
+    roofMesh.position.set(0, 7.4, 0);
+    roofMesh.castShadow = true;
+    relayStation.add(roofMesh);
+
+    const doorPivot = new THREE.Group();
+    doorPivot.position.set(-8.0, 0, -1.3);
+    const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 4.2, 2.4), rustMetalMat);
+    doorMesh.position.set(0, 2.1, 1.2);
+    doorPivot.add(doorMesh);
+    doorPivot.rotation.y = -Math.PI / 2.3;
+    relayStation.add(doorPivot);
+
+    const doorFrameL = new THREE.Mesh(new THREE.BoxGeometry(0.5, 4.4, 0.15), yellowHazardMat);
+    doorFrameL.position.set(-8.05, 2.2, 1.35);
+    relayStation.add(doorFrameL);
+
+    const doorFrameR = new THREE.Mesh(new THREE.BoxGeometry(0.5, 4.4, 0.15), yellowHazardMat);
+    doorFrameR.position.set(-8.05, 2.2, -1.35);
+    relayStation.add(doorFrameR);
+
+    const doorFrameTop = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.2, 2.85), yellowHazardMat);
+    doorFrameTop.position.set(-8.05, 4.3, 0);
+    relayStation.add(doorFrameTop);
+
+    const commTower = new THREE.Group();
+    commTower.position.set(4, 7.8, -6);
+    const towerLegMat = new THREE.LineBasicMaterial({ color: 0x64748b, linewidth: 2 });
+    for (let t = 0; t < 3; t++) {
+      const angle = (t * Math.PI * 2) / 3;
+      const legGeo = new THREE.CylinderGeometry(0.08, 0.12, 22, 6);
+      const leg = new THREE.Mesh(legGeo, rustMetalMat);
+      leg.position.set(Math.cos(angle) * 1.8, 11, Math.sin(angle) * 1.8);
+      commTower.add(leg);
+    }
+    const dishGeo = new THREE.SphereGeometry(1.6, 16, 8, 0, Math.PI);
+    const dish = new THREE.Mesh(dishGeo, rustMetalMat);
+    dish.rotation.x = -Math.PI / 3;
+    dish.position.set(0, 21, 0);
+    commTower.add(dish);
+
+    const beaconLight = new THREE.PointLight(0xef4444, 4.0, 35, 2.0);
+    beaconLight.position.set(0, 23, 0);
+    commTower.add(beaconLight);
+    relayStation.add(commTower);
+
+    const floodlightHousing = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.4, 0.4), rustMetalMat);
+    floodlightHousing.position.set(-8.2, 5.0, 0);
+    relayStation.add(floodlightHousing);
+
+    const floodlight = new THREE.SpotLight(0xfef08a, 18.0, 45, Math.PI / 3.5, 0.6, 1.2);
+    floodlight.position.set(-8.2, 5.0, 0);
+    const floodTarget = new THREE.Object3D();
+    floodTarget.position.set(-18.0, 0.0, 0);
+    relayStation.add(floodTarget);
+    floodlight.target = floodTarget;
+    floodlight.castShadow = true;
+    relayStation.add(floodlight);
+
+    relayStation.position.set(24, 0, -9999);
+    scene.add(relayStation);
+
+    /* -------------------------------------------------------------
+       7. DIRECTIONAL 3D RAIN (CABIN EXCLUSION)
+       ------------------------------------------------------------- */
+    const rainCount = 2400;
+    const streakLength = 1.6;
+    const rainGeo = new THREE.BufferGeometry();
+    const rainPositions = new Float32Array(rainCount * 2 * 3);
+
+    const rainData = [];
+    for (let i = 0; i < rainCount; i++) {
+      rainData.push({
+        x: (Math.random() - 0.5) * 50,
+        y: Math.random() * 20,
+        z: (Math.random() - 0.5) * 80 + 10
+      });
+    }
+
+    const rainMat = new THREE.LineBasicMaterial({
+      color: 0x9ec0e6,
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending
+    });
+
+    const rainLines = new THREE.LineSegments(rainGeo, rainMat);
+    scene.add(rainLines);
+
+    function isInsideCabin(x, y, z) {
+      return (x > -0.95 && x < 0.95 && y > 0.45 && y < 1.45 && z > -1.35 && z < 0.75);
+    }
+
+    function updateRainGeometry(delta, speed) {
+      const pos = rainPositions;
+      const speedZ = speed * 1.5;
+      const speedY = 32.0;
+
+      for (let i = 0; i < rainCount; i++) {
+        const r = rainData[i];
+        r.y -= speedY * delta;
+        r.z -= speedZ * delta;
+
+        if (r.y < 0.1 || r.z < -12) {
+          r.x = (Math.random() - 0.5) * 50;
+          r.y = 12 + Math.random() * 8;
+          r.z = Math.random() * 60 + 15;
+        }
+
+        let p1y = r.y;
+        let p2y = r.y - streakLength;
+        let p1z = r.z;
+        let p2z = r.z - (streakLength * (speedZ / speedY));
+
+        if (isInsideCabin(r.x, p1y, p1z) || isInsideCabin(r.x, p2y, p2z)) {
+          r.y += 3.0;
+          p1y = 999.0;
+          p2y = 999.0;
+        }
+
+        pos[i * 6 + 0] = r.x;
+        pos[i * 6 + 1] = p1y;
+        pos[i * 6 + 2] = p1z;
+
+        pos[i * 6 + 3] = r.x;
+        pos[i * 6 + 4] = p2y;
+        pos[i * 6 + 5] = p2z;
+      }
+      rainGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      rainGeo.attributes.position.needsUpdate = true;
+    }
+
+    /* -------------------------------------------------------------
+       8. 1987 BUICK GNX LOADER & DEEP CABIN CAMOUFLAGE
+       ------------------------------------------------------------- */
+    let isModelReady = false;
+    const gltfLoader = new THREE.GLTFLoader();
+    const modelPath = '1987_buick_grand_national_regal_gnx.glb';
+
+    gltfLoader.load(
+      modelPath,
+      (gltf) => {
+        const model = gltf.scene;
+        model.name = "buickGNX";
+
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+
+        const maxDim = Math.max(size.x, size.y, size.z);
+        if (maxDim > 0) {
+          const targetLength = 5.1;
+          const scaleFactor = targetLength / (size.z > 1 ? size.z : maxDim);
+          model.scale.setScalar(scaleFactor);
+        }
+
+        const updatedBox = new THREE.Box3().setFromObject(model);
+        const center = updatedBox.getCenter(new THREE.Vector3());
+        model.position.x = -center.x;
+        model.position.z = -center.z;
+        model.position.y = -updatedBox.min.y;
+
+        // Eliminate proxy colliders & make cabin surfaces pitch black
+        model.traverse((child) => {
+          if (child.isMesh) {
+            const nameLower = (child.name || '').toLowerCase();
+
+            let isInternalCollider = (
+              nameLower.includes('cube') ||
+              nameLower.includes('box') ||
+              nameLower.includes('collider') ||
+              nameLower.includes('collision') ||
+              nameLower.includes('hitbox') ||
+              nameLower.includes('dummy') ||
+              nameLower.includes('proxy') ||
+              nameLower.includes('fallback') ||
+              nameLower.includes('block') ||
+              nameLower.includes('rect')
+            );
+
+            const geo = child.geometry;
+            if (geo && !isInternalCollider) {
+              const vertCount = geo.attributes.position ? geo.attributes.position.count : 0;
+              if (vertCount >= 8 && vertCount <= 128) {
+                if (!geo.boundingBox) geo.computeBoundingBox();
+                const sz = geo.boundingBox.getSize(new THREE.Vector3());
+                if (sz.x > 0.05 && sz.y > 0.05 && sz.z > 0.05) {
+                  isInternalCollider = true;
+                }
+              }
+            }
+
+            if (isInternalCollider) {
+              child.visible = false;
+            } else {
+              child.castShadow = true;
+              child.receiveShadow = true;
+
+              if (child.material) {
+                const mat = child.material;
+                const matName = (mat.name || '').toLowerCase();
+                const isInterior = (
+                  matName.includes('interior') ||
+                  matName.includes('cabin') ||
+                  matName.includes('seat') ||
+                  matName.includes('dash') ||
+                  matName.includes('console') ||
+                  matName.includes('carpet') ||
+                  matName.includes('steering') ||
+                  nameLower.includes('interior') ||
+                  nameLower.includes('cabin') ||
+                  nameLower.includes('seat') ||
+                  nameLower.includes('dash')
+                );
+
+                if (isInterior) {
+                  if (mat.color) mat.color.setHex(0x010204);
+                  mat.roughness = 1.0;
+                  mat.metalness = 0.0;
+                  if (mat.emissive) mat.emissive.setHex(0x000000);
+                  mat.envMapIntensity = 0.0;
+                }
+              }
+            }
+          }
+        });
+
+        carRoot.add(model);
+        readyToLaunch();
+      },
+      undefined,
+      (error) => {
+        console.warn("Proceeding without Buick GLB.", error);
+        readyToLaunch();
+      }
+    );
+
+    function readyToLaunch() {
+      isModelReady = true;
+      document.getElementById('loader-screen').classList.add('fade-out');
+      renderer.shadowMap.needsUpdate = true;
+    }
+
+    /* -------------------------------------------------------------
+       9. TIMELINE SYSTEM & CINEMATICS
+       ------------------------------------------------------------- */
+    const shot1CamPos = new THREE.Vector3(2.4, 1.35, -5.8);
+    const shot1LookAt = new THREE.Vector3(0.0, 0.8, 1.2);
+
+    const shot2CamPos = new THREE.Vector3(2.6, 1.15, 5.8);
+    const shot2LookAt = new THREE.Vector3(0.1, 0.85, -0.5);
+
+    // Left-hand driver perspective
+    const shot3CamPos = new THREE.Vector3(0.42, 1.20, -0.12);
+    const shot3LookAt = new THREE.Vector3(0.36, 1.10, 25.0);
+
+    const sceneTimeline = {
+      active: false,
+      elapsed: 0,
+      speed: 28.0,
+      initialSpeed: 28.0,
+      scene2Started: false,
+      scene2Elapsed: 0,
+      scene2ChoiceDuration: 10.0,
+      scene3Active: false,
+      scene3Elapsed: 0,
+      scene3SubShot: 0,
+      carStopped: false
+    };
+
+    const titleCard = document.getElementById('title-card');
+    const telltaleOverlay = document.getElementById('telltale-overlay');
+    const choiceTimerBar = document.getElementById('choice-timer-bar');
+    const subtitleContainer = document.getElementById('subtitle-container');
+    const textContent = document.getElementById('text-content');
+    const playBtn = document.getElementById('play-btn');
+    const menuScreen = document.getElementById('menu-screen');
+
+    playBtn.addEventListener('click', () => {
+      if (!isModelReady) return;
+
+      // Directly start exterior audio tracks on user click
+      audioDirector.startExterior();
+
+      menuScreen.classList.add('hidden');
+      container.classList.add('active');
+
+      sceneTimeline.active = true;
+      renderer.shadowMap.autoUpdate = true;
+
+      setTimeout(() => titleCard.classList.add('show'), 400);
+      setTimeout(() => titleCard.classList.add('hide'), 3800);
+    });
+
+    function updateCinematicDirector(elapsed, delta, time) {
+      if (elapsed < 3.0) {
+        // Shot 1: Exterior Rear 3/4
+        const sway = Math.sin(time * 0.8) * 0.06;
+        camera.position.set(shot1CamPos.x + sway, shot1CamPos.y, shot1CamPos.z);
+        camera.lookAt(shot1LookAt);
+
+      } else if (elapsed < 7.0) {
+        // Shot 2: Exterior Front 3/4
+        const swayX = Math.sin((elapsed - 3.0) * 0.6) * 0.12;
+        camera.position.set(shot2CamPos.x + swayX, shot2CamPos.y, shot2CamPos.z);
+        camera.lookAt(shot2LookAt);
+
+      } else if (!sceneTimeline.scene3Active) {
+        audioDirector.switchToInterior();
+
+        const rumble = Math.sin(time * 16.0) * 0.002 + (Math.random() - 0.5) * 0.0008;
+        const breath = Math.sin(time * 1.5) * 0.002;
+
+        camera.position.set(shot3CamPos.x, shot3CamPos.y + rumble + breath, shot3CamPos.z);
+        camera.lookAt(shot3LookAt);
+      } else {
+        const s3 = sceneTimeline.scene3Elapsed;
+
+        if (s3 < 3.0) {
+          if (sceneTimeline.scene3SubShot !== 1) {
+            sceneTimeline.scene3SubShot = 1;
+            audioDirector.startExterior();
+          }
+          camera.position.set(-2.8, 1.45, -5.2);
+          camera.lookAt(0.2, 0.85, 1.2);
+
+        } else if (s3 < 6.5) {
+          if (sceneTimeline.scene3SubShot !== 2) {
+            sceneTimeline.scene3SubShot = 2;
+          }
+          const tDown = s3 - 3.0;
+          camera.position.set(4.2 + Math.sin(tDown * 0.3) * 0.4, 6.8, -4.5 + tDown * 0.2);
+          camera.lookAt(0.0, 0.6, 3.2);
+
+        } else {
+          if (sceneTimeline.scene3SubShot !== 3) {
+            sceneTimeline.scene3SubShot = 3;
+            audioDirector.switchToInterior();
+          }
+          const rumble = sceneTimeline.speed > 0
+            ? Math.sin(time * 16.0) * (0.0018 * (sceneTimeline.speed / sceneTimeline.initialSpeed))
+            : 0;
+
+          camera.position.set(shot3CamPos.x, shot3CamPos.y + rumble, shot3CamPos.z);
+
+          const stationTargetX = THREE.MathUtils.lerp(0.36, 4.2, Math.min(Math.max((s3 - 6.5) / 5.0, 0), 1));
+          camera.lookAt(stationTargetX, 1.25, 24.0);
+        }
+      }
+    }
+
+    /* -------------------------------------------------------------
+       10. CHOICE EXECUTION & TIMED DIALOGUE SEQUENCERS
+       ------------------------------------------------------------- */
+    function triggerScene2() {
+      sceneTimeline.scene2Started = true;
+      telltaleOverlay.classList.add('visible');
+      audioDirector.startRadioPingLoop();
+    }
+
+    const choiceSequences = {
+      1: {
+        audio: () => audioDirector.choice1Audio,
+        trustDelta: 1,
+        millerNotified: false,
+        cues: [
+          { start: 0,     duration: 3800, text: "Harlan: Elena? Do you have any idea what time it is?" },
+          { start: 4000,  duration: 7600, text: "Elena: Harlan... thank God. I’m at the relay station off Route 9. Come quick, and bring something heavy." },
+          { start: 12000, duration: 4600, text: "Harlan: Something heavy? Elena, what did you get yourself into?" },
+          { start: 17000, duration: 2600, text: "Elena: Just get here! Before they do..." }
+        ],
+        endTime: 20500
+      },
+      2: {
+        audio: () => audioDirector.choice2Audio,
+        trustDelta: -1,
+        millerNotified: true,
+        cues: [
+          { start: 0,     duration: 2000,  text: "Harlan: Not tonight, Elena." },
+          { start: 3000,  duration: 3000,  text: "Harlan: Miller. It's Harlan. I’m picking up a radio distress ping off Route 9." },
+          { start: 7000,  duration: 6000,  text: "Miller: Harlan? It’s two in the morning. Why are you monitoring emergency bands?" },
+          { start: 14000, duration: 5000,  text: "Harlan: Because Elena's radio code just popped up at the old relay station. She sounds like she's in deep." },
+          { start: 20000, duration: 10000, text: "Miller: Listen to me very carefully, Harlan. Stay back. I'm rolling a cruiser out, but if you step over that property line before I get there, it’s on you." }
+        ],
+        endTime: 31000
+      },
+      3: {
+        audio: () => audioDirector.choice3Audio,
+        trustDelta: -1,
+        millerNotified: false,
+        cues: [
+          { start: 0,     duration: 3000, text: "Harlan: This better be about the money you owe me, Elena." },
+          { start: 4000,  duration: 7000, text: "Elena: Shut up and listen! I’m bleeding out at the relay station. Get here before they do or nobody gets paid!" },
+          { start: 12000, duration: 2000, text: "Harlan: Bleeding out? Who's 'they'?" },
+          { start: 15000, duration: 2000, text: "Elena: Just get here!" }
+        ],
+        endTime: 18000
+      },
+      4: {
+        audio: () => audioDirector.choice4Audio,
+        trustDelta: 0,
+        millerNotified: false,
+        cues: [
+          { start: 0,    duration: 2000, text: "Harlan: I'm not doing this with you tonight..." },
+          { start: 3000, duration: 5000, text: "Elena: Harlan! They found me! The relay station—hurry!" },
+          { start: 9000, duration: 1000, text: "Harlan: Dammit, Elena..." }
+        ],
+        endTime: 11000,
+        onStart: () => {
+          setTimeout(() => {
+            audioDirector.voicemailBeep.currentTime = 0;
+            audioDirector.voicemailBeep.play().catch(() => {});
+          }, 2000);
+        }
+      }
+    };
+
+    function startScene3() {
+      sceneTimeline.scene3Active = true;
+      sceneTimeline.scene3Elapsed = 0;
+      sceneTimeline.scene3SubShot = 1;
+      audioDirector.startExterior();
+      relayStation.position.set(19.0, 0, 280);
+    }
+
+    function makeChoice(choiceNum) {
+      if (gameState.choiceMade) return;
+      gameState.choiceMade = true;
+
+      audioDirector.stopRadioPingLoop();
+      telltaleOverlay.classList.remove('visible');
+
+      const seq = choiceSequences[choiceNum] || choiceSequences[4];
+      gameState.elenaTrust += seq.trustDelta;
+      gameState.millerNotified = seq.millerNotified;
+
+      const track = seq.audio();
+      if (track) {
+        track.currentTime = 0;
+        track.loop = false;
+        track.play().catch(() => {});
+      }
+
+      if (seq.onStart) seq.onStart();
+
+      subtitleContainer.classList.add('visible');
+
+      seq.cues.forEach(cue => {
+        setTimeout(() => {
+          renderPacedSubtitle(cue.text, cue.duration);
+        }, cue.start);
+      });
+
+      setTimeout(() => {
+        subtitleContainer.classList.remove('visible');
+        startScene3();
+      }, seq.endTime);
+    }
+
+    let typewriterTimer = null;
+    function renderPacedSubtitle(fullText, allocatedDurationMs) {
+      if (typewriterTimer) clearInterval(typewriterTimer);
+      textContent.textContent = "";
+
+      const targetTime = Math.max(allocatedDurationMs * 0.88, 400);
+      const intervalMs = Math.max(16, targetTime / Math.max(fullText.length, 1));
+
+      let index = 0;
+      typewriterTimer = setInterval(() => {
+        if (index < fullText.length) {
+          textContent.textContent += fullText.charAt(index);
+          index++;
+        } else {
+          clearInterval(typewriterTimer);
+        }
+      }, intervalMs);
+    }
+
+    function triggerArrivalSequence() {
+      audioDirector.stopAllDrivingAudio();
+
+      audioDirector.engineOff.onended = () => {
+        audioDirector.engineOff.onended = null;
+        vehicleHeadlights.forEach(hl => { hl.intensity = 0; });
+        startArrivalDialogue();
+      };
+
+      setTimeout(() => {
+        if (!audioDirector.scene3DialogueStarted) {
+          vehicleHeadlights.forEach(hl => { hl.intensity = 0; });
+          startArrivalDialogue();
+        }
+      }, 2500);
+    }
+
+    function startArrivalDialogue() {
+      if (audioDirector.scene3DialogueStarted) return;
+      audioDirector.scene3DialogueStarted = true;
+
+      audioDirector.scene3Dialogue.currentTime = 0;
+      audioDirector.scene3Dialogue.play().catch(() => {});
+
+      subtitleContainer.classList.add('visible');
+      renderPacedSubtitle("Harlan: Alright... quiet approach. Let's see what we're working with.", 5000);
+
+      setTimeout(() => {
+        subtitleContainer.classList.remove('visible');
+        document.getElementById('hotspot-container').classList.add('visible');
+        document.getElementById('letterbox-top').classList.add('letterbox-hidden');
+        document.getElementById('letterbox-bottom').classList.add('letterbox-hidden');
+      }, 5000);
+    }
+
+    let exitCarCutscene = false;
+    let exitShotPhase = 0;
+    let exitShotTimer = 0;
+    const walkStartPos = new THREE.Vector3();
+    const walkDoorPos = new THREE.Vector3();
+
+    function onExitCarClick() {
+      document.getElementById('hotspot-container').classList.remove('visible');
+
+      if (audioDirector.exitDialogue) {
+        audioDirector.exitDialogue.currentTime = 0;
+        audioDirector.exitDialogue.play().catch(() => {});
+      }
+
+      subtitleContainer.classList.add('visible');
+      renderPacedSubtitle("Harlan: Here goes nothing.", 2000);
+
+      setTimeout(() => {
+        subtitleContainer.classList.remove('visible');
+
+        setTimeout(() => {
+          document.getElementById('letterbox-top').classList.remove('letterbox-hidden');
+          document.getElementById('letterbox-bottom').classList.remove('letterbox-hidden');
+
+          audioDirector.startExterior();
+          exitCarCutscene = true;
+          exitShotPhase = 1;
+          exitShotTimer = 0;
+
+        setTimeout(() => {
+          const blackout = document.getElementById('blackout-overlay');
+          blackout.style.transition = 'opacity 0.15s ease';
+          blackout.classList.add('active');
+
+          setTimeout(() => {
+            exitShotPhase = 2;
+            exitShotTimer = 0;
+
+            const doorwayWorldPos = new THREE.Vector3(-8.1, 1.75, 0).applyMatrix4(relayStation.matrixWorld);
+            walkDoorPos.set(doorwayWorldPos.x + 2.0, 1.75, doorwayWorldPos.z);
+            walkStartPos.set(doorwayWorldPos.x - 8.5, 1.75, doorwayWorldPos.z + 0.1);
+
+            camera.position.copy(walkStartPos);
+            camera.lookAt(walkDoorPos);
+
+            blackout.classList.remove('active');
+
+            if (audioDirector.footsteps) {
+              audioDirector.footsteps.currentTime = 0;
+              audioDirector.footsteps.loop = true;
+              audioDirector.footsteps.play().catch(() => {});
+            }
+
+            setTimeout(() => {
+              blackout.style.transition = 'opacity 1.5s ease';
+              blackout.classList.add('active');
+
+              setTimeout(() => {
+                if (audioDirector.footsteps) audioDirector.footsteps.pause();
+                exitShotPhase = 3;
+                camera.position.set(doorwayWorldPos.x - 2.5, 1.75, doorwayWorldPos.z);
+                camera.lookAt(doorwayWorldPos.x + 4.0, 1.75, doorwayWorldPos.z);
+                document.getElementById('end-card').classList.add('visible');
+                fadeOutAllAudio(3000);
+              }, 1500);
+            }, 4500);
+          }, 200);
+        }, 3000);
+        }, 500);
+      }, 2000);
+    }
+
+    function fadeOutAllAudio(durationMs) {
+      const allAudio = Array.from(document.querySelectorAll('audio'));
+      const initialVols = allAudio.map(a => a.volume);
+      const startTime = performance.now();
+
+      const fadeTimer = setInterval(() => {
+        const elapsed = performance.now() - startTime;
+        const factor = Math.max(0, 1 - (elapsed / durationMs));
+
+        allAudio.forEach((a, i) => {
+          a.volume = initialVols[i] * factor;
+        });
+
+        if (factor <= 0) {
+          clearInterval(fadeTimer);
+          allAudio.forEach(a => {
+            a.pause();
+            a.volume = 0;
+          });
+        }
+      }, 50);
+    }
+
+    const gloveboxChunk = new THREE.Group();
+    gloveboxChunk.position.set(0, -600, 0);
+    scene.add(gloveboxChunk);
+
+    (function initGloveboxInterior() {
+      const boxMat = new THREE.MeshStandardMaterial({ color: 0x111317, roughness: 0.85, metalness: 0.1 });
+      const liningMat = new THREE.MeshStandardMaterial({ color: 0x1e2229, roughness: 0.95 });
+
+      const bottom = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.02, 0.46), liningMat);
+      bottom.position.y = 0;
+      gloveboxChunk.add(bottom);
+
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.32, 0.02), boxMat);
+      back.position.set(0, 0.16, -0.23);
+      gloveboxChunk.add(back);
+
+      const front = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.32, 0.02), boxMat);
+      front.position.set(0, 0.16, 0.23);
+      gloveboxChunk.add(front);
+
+      const left = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.32, 0.46), boxMat);
+      left.position.set(-0.36, 0.16, 0);
+      gloveboxChunk.add(left);
+
+      const right = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.32, 0.46), boxMat);
+      right.position.set(0.36, 0.16, 0);
+      gloveboxChunk.add(right);
+
+      const cabLight = new THREE.PointLight(0xffeedd, 1.8, 2.5, 2.0);
+      cabLight.position.set(0, 0.45, 0.05);
+      gloveboxChunk.add(cabLight);
+
+      gltfLoader.load('Revolver.glb', (gltf) => {
+        const pistol = gltf.scene;
+        const b = new THREE.Box3().setFromObject(pistol);
+        const sz = b.getSize(new THREE.Vector3());
+        const s = 0.22 / Math.max(sz.x, sz.y, sz.z);
+        pistol.scale.setScalar(s);
+        pistol.rotation.set(-Math.PI / 2, 0, 0.35);
+        pistol.position.set(-0.16, 0.03, -0.02);
+        gloveboxChunk.add(pistol);
+      }, undefined, () => {});
+
+      gltfLoader.load('Crowbar.glb', (gltf) => {
+        const crowbar = gltf.scene;
+        const b = new THREE.Box3().setFromObject(crowbar);
+        const sz = b.getSize(new THREE.Vector3());
+        const s = 0.46 / Math.max(sz.x, sz.y, sz.z);
+        crowbar.scale.setScalar(s);
+        crowbar.rotation.set(-Math.PI / 2, 0.15, -0.4);
+        crowbar.position.set(0.13, 0.025, 0.01);
+        gloveboxChunk.add(crowbar);
+      }, undefined, () => {});
+    })();
+
+    let gloveboxMode = false;
+    function onInspectGloveboxClick() {
+      document.getElementById('hotspot-container').classList.remove('visible');
+
+      const blackout = document.getElementById('blackout-overlay');
+      blackout.style.transition = 'opacity 0.05s ease';
+      blackout.classList.add('active');
+
+      if (audioDirector.gloveboxClick) {
+        audioDirector.gloveboxClick.currentTime = 0;
+        audioDirector.gloveboxClick.play().catch(() => {});
+      }
+
+      setTimeout(() => {
+        gloveboxMode = true;
+        blackout.classList.remove('active');
+
+        setTimeout(() => {
+          if (audioDirector.gloveboxDialogue) {
+            audioDirector.gloveboxDialogue.currentTime = 0;
+            audioDirector.gloveboxDialogue.play().catch(() => {});
+          }
+
+          subtitleContainer.classList.add('visible');
+          renderPacedSubtitle("Harlan: Two bullets left in the piece... or the iron bar. Can't take both.", 8000);
+
+          setTimeout(() => {
+            subtitleContainer.classList.remove('visible');
+            document.getElementById('weapon-choice-container').classList.add('visible');
+          }, 8000);
+        }, 500);
+      }, 200);
+    }
+
+    function chooseWeapon(weaponType) {
+      gameState.selectedWeapon = weaponType;
+      document.getElementById('weapon-choice-container').classList.remove('visible');
+
+      const isRevolver = weaponType === 'revolver';
+      const track = isRevolver ? audioDirector.revolverChoice : audioDirector.crowbarChoice;
+      const text = isRevolver
+        ? "Harlan: If there's trouble inside, two rounds will have to do."
+        : "Harlan: Good for locks... or breaking skulls.";
+
+      if (track) {
+        track.currentTime = 0;
+        track.play().catch(() => {});
+      }
+
+      subtitleContainer.classList.add('visible');
+      renderPacedSubtitle(text, 4000);
+
+      setTimeout(() => {
+        subtitleContainer.classList.remove('visible');
+
+        const blackout = document.getElementById('blackout-overlay');
+        blackout.style.transition = 'opacity 0.05s ease';
+        blackout.classList.add('active');
+
+        if (audioDirector.gloveboxClose) {
+          audioDirector.gloveboxClose.currentTime = 0;
+          audioDirector.gloveboxClose.play().catch(() => {});
+        }
+
+        setTimeout(() => {
+          gloveboxMode = false;
+          blackout.classList.remove('active');
+
+          const gloveboxBtn = document.getElementById('btn-inspect-glovebox');
+          if (gloveboxBtn) gloveboxBtn.style.display = 'none';
+
+          const hotspotContainer = document.getElementById('hotspot-container');
+          hotspotContainer.style.justifyContent = 'flex-start';
+          hotspotContainer.classList.add('visible');
+        }, 200);
+      }, 4000);
+    }
+
+    /* -------------------------------------------------------------
+       11. ENGINE RENDER LOOP
+       ------------------------------------------------------------- */
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (!sceneTimeline.active) return;
+
+      const delta = Math.min(clock.getDelta(), 0.1);
+      const time = clock.getElapsedTime();
+
+      sceneTimeline.elapsed += delta;
+
+      if (sceneTimeline.scene3Active) {
+        sceneTimeline.scene3Elapsed += delta;
+
+        if (sceneTimeline.scene3Elapsed > 7.0 && sceneTimeline.speed > 0) {
+          const decelRate = sceneTimeline.initialSpeed / 4.6;
+          sceneTimeline.speed = Math.max(0, sceneTimeline.speed - decelRate * delta);
+
+          if (sceneTimeline.speed === 0 && !sceneTimeline.carStopped) {
+            sceneTimeline.carStopped = true;
+            triggerArrivalSequence();
+          }
+        }
+      }
+
+      if (exitCarCutscene) {
+        exitShotTimer += delta;
+
+        if (exitShotPhase === 1) {
+          const progress = Math.min(exitShotTimer / 3.0, 1.0);
+          const camX = THREE.MathUtils.lerp(18.0, 16.5, progress);
+          const camY = THREE.MathUtils.lerp(32.0, 31.0, progress);
+          const camZ = THREE.MathUtils.lerp(-22.0, -19.5, progress);
+          camera.position.set(camX, camY, camZ);
+          camera.lookAt(0, 0.6, 0);
+
+        } else if (exitShotPhase === 2) {
+          const walkProg = Math.min(exitShotTimer / 6.0, 1.0);
+          const curPos = new THREE.Vector3().lerpVectors(walkStartPos, walkDoorPos, walkProg);
+
+          const stepSpeed = 7.5;
+          const bobY = Math.sin(exitShotTimer * stepSpeed) * 0.045;
+          const bobX = Math.cos(exitShotTimer * (stepSpeed * 0.5)) * 0.025;
+          const swayYaw = Math.sin(exitShotTimer * (stepSpeed * 0.5)) * 0.02;
+
+          camera.position.set(curPos.x + bobX, curPos.y + bobY, curPos.z);
+
+          const lookTarget = walkDoorPos.clone();
+          lookTarget.z += Math.sin(exitShotTimer * 1.5) * 0.08 + swayYaw;
+          lookTarget.y += Math.sin(exitShotTimer * 2.5) * 0.06;
+          camera.lookAt(lookTarget);
+        }
+      } else if (gloveboxMode) {
+        camera.position.set(0, -599.38, 0.0);
+        camera.lookAt(0, -600, 0);
+      } else {
+        updateCinematicDirector(sceneTimeline.elapsed, delta, time);
+      }
+
+      if (sceneTimeline.elapsed >= 10.0 && !sceneTimeline.scene2Started) {
+        triggerScene2();
+      }
+
+      if (sceneTimeline.scene2Started && !gameState.choiceMade) {
+        sceneTimeline.scene2Elapsed += delta;
+
+        const remainingFactor = Math.max(0, 1.0 - (sceneTimeline.scene2Elapsed / sceneTimeline.scene2ChoiceDuration));
+        choiceTimerBar.style.transform = `scaleX(${remainingFactor})`;
+
+        if (sceneTimeline.scene2Elapsed >= sceneTimeline.scene2ChoiceDuration) {
+          makeChoice(4);
+        }
+      }
+
+      const moveDist = sceneTimeline.speed * delta;
+
+      roadPlanes.forEach(rp => {
+        rp.position.z -= moveDist;
+        if (rp.position.z <= -roadLength) rp.position.z += roadLength * 2;
+      });
+
+      terrainPlanes.forEach(tp => {
+        tp.position.z -= moveDist;
+        if (tp.position.z <= -roadLength) tp.position.z += roadLength * 2;
+      });
+
+      if (sceneTimeline.scene3Active && relayStation.position.z > -9000) {
+        relayStation.position.z -= moveDist;
+      }
+
+      updateRainGeometry(delta, sceneTimeline.speed);
+
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+  </script>
+</body>
+</html>
